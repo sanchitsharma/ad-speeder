@@ -4,3 +4,4 @@ tests/live-shots/
 tests/*.log
 tests/*.png
 store/build/popup@2x.png
+.env

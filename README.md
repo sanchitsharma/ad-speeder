@@ -43,6 +43,17 @@ npm run test:live-prime        # real primevideo.com smoke test (no login needed
 npm run package                # builds ad-speeder.zip for the Chrome Web Store
 ```
 
+### Publishing updates
+
+The listing text, privacy answers and store images are in [`store/`](store/) ([`store/listing.md`](store/listing.md); regenerate images with `npm run assets`).
+
+To ship a new version:
+
+1. Bump `version` in [`extension/manifest.json`](extension/manifest.json).
+2. Run `npm run publish`. It lints, runs the tests, builds `ad-speeder.zip`, then uploads and submits it for review through the Chrome Web Store API.
+
+This needs a `.env` with the API credentials (see [`.env.example`](.env.example) and [this key guide](https://github.com/fregante/chrome-webstore-upload-keys)).
+
 ### Known limits
 
 - YouTube and Prime Video change their page markup from time to time. If ads stop being detected, the selectors live at the top of [`content.js`](extension/content.js).

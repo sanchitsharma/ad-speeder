@@ -13,13 +13,15 @@
     "package": "python3 -c \"import shutil; shutil.make_archive('ad-speeder','zip','extension')\" && echo built ad-speeder.zip",
     "lint": "eslint . && prettier --check extension tests",
     "format": "prettier --write extension tests && eslint --fix .",
-    "assets": "node store/capture-popup.mjs && node store/make-assets.mjs"
+    "assets": "node store/capture-popup.mjs && node store/make-assets.mjs",
+    "publish": "scripts/publish.sh"
   },
   "author": "",
   "license": "MIT",
   "type": "commonjs",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "chrome-webstore-upload-cli": "^4.0.2",
     "eslint": "^10.15.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.7",
