@@ -6,7 +6,7 @@ Ad Speeder does not collect, store, sell or share any personal data.
 
 ## What the extension accesses
 
-- **Pages on youtube.com, primevideo.com and amazon.in** (and YouTube videos embedded on other sites). The extension looks at the video player on these pages, entirely inside your browser, to tell when an ad is playing. It then changes the video's playback speed and mute state and clicks the ad's Skip button. Nothing it sees on these pages is recorded or sent anywhere.
+- **Pages on youtube.com and primevideo.com** (and YouTube videos embedded on other sites). The extension looks at the video player on these pages, entirely inside your browser, to tell when an ad is playing. It then changes the video's playback speed and mute state and clicks the ad's Skip button. Nothing it sees on these pages is recorded or sent anywhere.
 
 ## What the extension stores
 

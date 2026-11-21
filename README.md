@@ -12,7 +12,7 @@ While an ad is playing, Ad Speeder:
 
 Unskippable ads simply fly by at 16×. The toolbar icon shows a red **AD** badge while an ad is being fast-forwarded. The popup lets you turn it on/off, choose the ad speed (2/4/8/16×), toggle muting and auto-skip, and see how much time you've saved.
 
-It runs only on `youtube.com` (including YouTube videos embedded on other sites), `primevideo.com` and `amazon.in`. It collects no data and makes no network requests. See the [privacy policy](PRIVACY.md).
+It runs only on `youtube.com` (including YouTube videos embedded on other sites) and `primevideo.com`. It collects no data and makes no network requests. See the [privacy policy](PRIVACY.md).
 
 ## Implementation Notes
 

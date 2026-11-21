@@ -199,14 +199,14 @@ test('prime: subtitle-like text "Ad" / "Add 5:00" does not trigger', async () =>
   await page.close();
 });
 
-test('prime: works on amazon.in/gp/video too', async () => {
-  const page = await openPage(AMAZON_IN_URL);
+test('prime: adtimeindicator variant of the ad timer is detected', async () => {
+  const page = await openPage(PRIME_URL);
   await page.evaluate(() => {
     document.getElementById('overlay').innerHTML =
       '<div class="atvwebplayersdk-adtimeindicator-text">Ad 0:20</div>';
   });
   await waitFor(async () => (await vstate(page)).rate === 16, {
-    msg: '16x on amazon.in'
+    msg: '16x via adtimeindicator'
   });
   await page.close();
 });
@@ -901,6 +901,19 @@ test('stats: concurrent ad-ends from several tabs are all counted', async () => 
     msg: '3 ads counted'
   });
   for (const p of pages) await p.close();
+});
+
+test('amazon.in is not injected (Prime Video in India plays on primevideo.com)', async () => {
+  const page = await ctx.newPage();
+  await page.goto(AMAZON_IN_URL);
+  await sleep(800);
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.dataset.adSpeeder ?? null
+    ),
+    null
+  );
+  await page.close();
 });
 
 test('non-video sites are not injected (e.g. example.com)', async () => {
