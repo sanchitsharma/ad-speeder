@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <h1>⏩ Ad Speeder</h1>
+    <label class="row">Enabled <input type="checkbox" id="enabled" /></label>
+    <label class="row"
+      >Ad speed
+      <select id="speed">
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+        <option value="8">8×</option>
+        <option value="16">16× (max)</option>
+      </select>
+    </label>
+    <label class="row">Mute ads <input type="checkbox" id="mute" /></label>
+    <label class="row"
+      >Auto-click "Skip" <input type="checkbox" id="autoSkip"
+    /></label>
+    <div class="stats">
+      Ads fast-forwarded: <b id="ads">0</b><br />
+      Time saved: <b id="saved">0s</b><br />
+      Skips clicked: <b id="skips">0</b><br />
+      <button id="reset">Reset stats</button>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Privacy policy · Ad Speeder</title><link rel="icon" href="icon.png"><style>
+:root{--bg:#fff;--fg:#1f2328;--muted:#59636e;--accent:#d93025;--card:#f6f8fa;--border:#d1d9e0}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--muted:#9198a1;--card:#151b23;--border:#3d444d}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:720px;margin:0 auto;padding:40px 16px 64px}
+a{color:var(--accent)}code{background:var(--card);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:.9em}
+h1{font-size:1.9rem;line-height:1.25;margin:0 0 8px}h2{font-size:1.2rem;margin:32px 0 8px}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:24px;text-decoration:none;color:inherit;font-weight:600}
+.brand img{width:40px;height:40px}.muted{color:var(--muted)}
+footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--border);color:var(--muted);font-size:.9rem}
+</style></head>
+<body><main>
+<a class="brand" href="./"><img src="icon.png" alt="">Ad Speeder</a>
+<h1>Ad Speeder privacy policy</h1>
+<p><em>Last updated: 21 November 2026</em></p>
+<p>Ad Speeder does not collect, store, sell or share any personal data.</p>
+<h2>What the extension accesses</h2>
+<ul>
+<li><strong>Pages on youtube.com, primevideo.com and amazon.in</strong> (and YouTube videos embedded on other sites). The extension looks at the video player on these pages, entirely inside your browser, to tell when an ad is playing. It then changes the video&#x27;s playback speed and mute state and clicks the ad&#x27;s Skip button. Nothing it sees on these pages is recorded or sent anywhere.</li>
+</ul>
+<h2>What the extension stores</h2>
+<ul>
+<li><strong>Your settings</strong> (on/off, ad speed, mute, auto-skip) in <code>chrome.storage.sync</code>. If you use Chrome Sync, Chrome syncs these between your own browsers under your Google account. The developer cannot see them.</li>
+<li><strong>Counters</strong> (number of ads fast-forwarded, estimated time saved, skips clicked) in <code>chrome.storage.local</code>, on your device only. You can reset them from the popup.</li>
+</ul>
+<h2>What the extension does not do</h2>
+<ul>
+<li>It makes no network requests of its own and has no server.</li>
+<li>It contains no analytics, tracking, advertising or third-party code.</li>
+<li>It does not read your browsing history, cookies, account details or anything outside the video player on the sites listed above.</li>
+</ul>
+<p>Removing the extension deletes its stored settings and counters.</p>
+<h2>Contact</h2>
+<p>Questions or problems: open an issue at <a href="https://github.com/sanchitsharma/ad-speeder/issues">https://github.com/sanchitsharma/ad-speeder/issues</a>.</p>
+<footer>Not affiliated with, endorsed by, or sponsored by Google, YouTube or Amazon. · <a href="https://github.com/sanchitsharma/ad-speeder">Source on GitHub</a></footer>
+</main></body></html>

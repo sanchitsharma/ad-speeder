@@ -1,0 +1,5 @@
+node_modules
+*.zip
+tests/*.png
+tests/live-shots
+tests/*.log

@@ -1,0 +1,42 @@
+body {
+  font:
+    13px system-ui,
+    sans-serif;
+  width: 240px;
+  margin: 0;
+  padding: 12px;
+  color: #202124;
+}
+h1 {
+  font-size: 15px;
+  margin: 0 0 10px;
+}
+label.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 8px 0;
+}
+select {
+  font: inherit;
+}
+.stats {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #ddd;
+  color: #5f6368;
+  line-height: 1.6;
+}
+.stats b {
+  color: #202124;
+}
+button {
+  margin-top: 6px;
+  font: inherit;
+  font-size: 11px;
+  background: none;
+  border: 0;
+  color: #1a73e8;
+  padding: 0;
+  cursor: pointer;
+}
