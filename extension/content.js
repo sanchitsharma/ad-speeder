@@ -27,6 +27,17 @@
   // video element -> { rate, muted, setRate, didMute } captured when the ad started
   const saved = new Map();
 
+  // The viewer's own playback speed outside ads. A rate only counts once it has
+  // held for STABLE_MS outside an ad, so a site's brief reset to 1x as an ad
+  // begins (YouTube does this) isn't mistaken for the viewer's choice.
+  const STABLE_MS = 1000;
+  // After an ad, keep re-applying the viewer's speed for this long if the site
+  // resets it to 1x (or leaves our ad speed) again.
+  const POST_AD_GUARD_MS = 2000;
+  let viewerRate = null;
+  let candidate = { rate: null, since: 0 };
+  let guard = null; // { until, rate, videos: Set<HTMLVideoElement> }
+
   // ---------- helpers ----------
   const isVisible = (el) => {
     if (!el || !el.isConnected) return false;
@@ -159,17 +170,85 @@
   const skipSelectors =
     SITE === 'youtube' ? YT_SKIP_SELECTORS : PRIME_SKIP_SELECTORS;
 
+  // The speed to return to after the ad, decided when the ad starts.
+  function speedToRestore(current) {
+    // Our own ad speed left over (stale state): use the viewer's speed, else 1x.
+    if (current >= MAX_RATE) return viewerRate ?? 1;
+    // 1x right as the ad starts is usually the site resetting the speed for the
+    // ad, not the viewer: go back to the speed they were actually watching at.
+    if (current === 1 && viewerRate !== null) return viewerRate;
+    return current;
+  }
+
+  function mainVideo() {
+    let best = null;
+    let bestArea = 0;
+    for (const v of videos()) {
+      const r = v.getBoundingClientRect();
+      const area = r.width * r.height;
+      if (area > bestArea) {
+        best = v;
+        bestArea = area;
+      }
+    }
+    return best;
+  }
+
+  // Record a speed observation. When the speed changes, the previous speed is
+  // locked in as the viewer's speed if it had held for STABLE_MS: done at the
+  // moment of change, so a site's reset to 1x can never pre-empt it.
+  function noteRate(rate, now = performance.now()) {
+    if (rate === candidate.rate) {
+      if (now - candidate.since >= STABLE_MS && rate < MAX_RATE)
+        viewerRate = rate;
+      return;
+    }
+    if (
+      candidate.rate !== null &&
+      candidate.rate < MAX_RATE &&
+      now - candidate.since >= STABLE_MS
+    )
+      viewerRate = candidate.rate;
+    candidate = { rate, since: now };
+  }
+
+  function trackViewerRate() {
+    const v = mainVideo();
+    if (v) noteRate(v.playbackRate);
+  }
+
+  const setRate = (v, rate) => {
+    if (v.playbackRate === rate) return;
+    try {
+      v.playbackRate = rate;
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // During the post-ad window, undo a site's reset to 1x (or to our ad speed);
+  // any other speed is someone's deliberate choice, so stop guarding.
+  function enforceGuard(v) {
+    if (!guard || inAd || !guard.videos.has(v)) return;
+    if (performance.now() > guard.until) {
+      guard = null;
+      return;
+    }
+    const rate = v.playbackRate;
+    if (rate === guard.rate) return;
+    if (rate === 1 || rate >= MAX_RATE) setRate(v, guard.rate);
+    else guard = null;
+  }
+
   function speedUp(v) {
     let s = saved.get(v);
     if (!s) {
       s = {
-        rate: v.playbackRate,
+        rate: speedToRestore(v.playbackRate),
         muted: v.muted,
         setRate: null,
         didMute: false
       };
-      // If we somehow captured our own speed (e.g. stale state), fall back to 1x.
-      if (s.rate >= MAX_RATE) s.rate = 1;
       saved.set(v, s);
     }
     const target = Math.max(
@@ -195,19 +274,32 @@
   }
 
   function restoreAll() {
+    const restored = new Set();
+    let guardRate = null;
     for (const [v, s] of saved) {
       if (!v.isConnected) continue;
-      // Only undo what we did: if the site/user changed the rate since, leave it alone.
-      if (s.setRate !== null && v.playbackRate === s.setRate) {
-        try {
-          v.playbackRate = s.rate;
-        } catch {
-          /* ignore */
-        }
+      const cur = v.playbackRate;
+      // Put the viewer's speed back if the video is still at our ad speed, or if
+      // the site reset it to 1x. Any other speed was chosen by the site/viewer
+      // after the ad, so leave it alone.
+      if (
+        (s.setRate !== null && cur === s.setRate) ||
+        (cur === 1 && s.rate !== 1)
+      ) {
+        setRate(v, s.rate);
       }
       if (s.didMute && v.muted) v.muted = s.muted;
+      restored.add(v);
+      guardRate = s.rate;
     }
     saved.clear();
+    if (restored.size && guardRate !== null) {
+      guard = {
+        until: performance.now() + POST_AD_GUARD_MS,
+        rate: guardRate,
+        videos: restored
+      };
+    }
   }
 
   // ---------- skip buttons ----------
@@ -331,8 +423,10 @@
         speed: Math.min(settings.speed, MAX_RATE),
         skips: skipsThisAd
       });
-    } else if (debug && !document.documentElement.dataset.adSpeeder) {
-      mark('content');
+    } else {
+      if (guard) videos().forEach(enforceGuard);
+      else if (settings.enabled) trackViewerRate();
+      if (debug && !document.documentElement.dataset.adSpeeder) mark('content');
     }
   }
 
@@ -373,11 +467,16 @@
     attributeFilter: ['class', 'style', 'hidden']
   });
   setInterval(tick, 400);
-  // Sites sometimes reset playbackRate during an ad; re-apply immediately.
+  // Sites sometimes reset playbackRate during or right after an ad; react
+  // immediately rather than on the next tick.
   document.addEventListener(
     'ratechange',
-    () => {
+    (e) => {
       if (inAd) schedule();
+      else if (guard && e.target instanceof HTMLVideoElement)
+        enforceGuard(e.target);
+      else if (settings.enabled && e.target === mainVideo())
+        noteRate(e.target.playbackRate);
     },
     true
   );

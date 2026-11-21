@@ -194,6 +194,31 @@ await skipScenario(
   { pod: 2 }
 );
 
+// --- viewer speed restored even when the player resets to 1x as the ad starts ---
+await page.evaluate(() => {
+  document.querySelector('#movie_player video').playbackRate = 1.5;
+});
+await sleep(1500);
+await page.evaluate(() => {
+  document.querySelector('#movie_player video').playbackRate = 1;
+  document.querySelector('#movie_player').classList.add('ad-showing');
+});
+await waitFor(async () => (await st()).rate === 16, { msg: '16x' }).catch(
+  () => {}
+);
+await page.evaluate(() =>
+  document.querySelector('#movie_player').classList.remove('ad-showing')
+);
+await waitFor(async () => (await st()).ext === 'content', { msg: 'end' }).catch(
+  () => {}
+);
+await sleep(400);
+const sp = await st();
+ok(
+  sp.rate === 1.5,
+  `real player: 1.5x viewer, reset to 1x at ad start → restored ${sp.rate}x`
+);
+
 ok(
   !errs.some((e) => /AdSpeeder|content\.js/.test(e)),
   'no extension errors on page'

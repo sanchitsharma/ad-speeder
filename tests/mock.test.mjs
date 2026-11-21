@@ -516,6 +516,106 @@ test('youtube: ads inside an embedded YouTube iframe on another site are handled
   await page.close();
 });
 
+// ---------------- restoring the viewer's speed ----------------
+
+const setRateIn = (page, rate) =>
+  page.evaluate((r) => {
+    document.getElementById('v').playbackRate = r;
+  }, rate);
+const ytAd = (page, on) =>
+  page.evaluate((on) => {
+    document.getElementById('movie_player').classList.toggle('ad-showing', on);
+  }, on);
+
+test('speed: player resets to 1x as the ad starts → viewer speed 1.5x restored after', async () => {
+  const page = await openPage(YT_URL);
+  await setRateIn(page, 1.5);
+  await sleep(1500); // viewer has been watching at 1.5x
+  // YouTube-style: speed dropped to 1x at the same moment the ad starts
+  await page.evaluate(() => {
+    document.getElementById('v').playbackRate = 1;
+    document.getElementById('movie_player').classList.add('ad-showing');
+  });
+  await waitFor(async () => (await vstate(page)).rate === 16, { msg: '16x' });
+  await ytAd(page, false);
+  await waitFor(async () => (await vstate(page)).state === 'content', {
+    msg: 'ad end'
+  });
+  await sleep(300);
+  assert.equal((await vstate(page)).rate, 1.5);
+  await page.close();
+});
+
+test('speed: player resets to 1x again just after the ad → 2x re-applied', async () => {
+  const page = await openPage(YT_URL);
+  await setRateIn(page, 2);
+  await sleep(1500);
+  await ytAd(page, true);
+  await waitFor(async () => (await vstate(page)).rate === 16, { msg: '16x' });
+  await ytAd(page, false);
+  await waitFor(async () => (await vstate(page)).rate === 2, {
+    msg: 'restored 2x'
+  });
+  await sleep(300);
+  await setRateIn(page, 1); // site resets after our restore
+  await waitFor(async () => (await vstate(page)).rate === 2, {
+    timeout: 1500,
+    msg: 're-applied 2x'
+  });
+  await page.close();
+});
+
+test("speed: viewer's own change to 1x after the ad is respected", async () => {
+  const page = await openPage(YT_URL);
+  await setRateIn(page, 1.5);
+  await sleep(1500);
+  await ytAd(page, true);
+  await waitFor(async () => (await vstate(page)).rate === 16, { msg: '16x' });
+  await ytAd(page, false);
+  await waitFor(async () => (await vstate(page)).rate === 1.5, {
+    msg: 'restored'
+  });
+  await sleep(2500); // past the post-ad window
+  await setRateIn(page, 1);
+  await sleep(800);
+  assert.equal((await vstate(page)).rate, 1);
+  await page.close();
+});
+
+test('speed: viewer at 1.25x who changed speed just before the ad gets 1.25x back', async () => {
+  const page = await openPage(YT_URL);
+  await sleep(1500); // stable at 1x first
+  await setRateIn(page, 1.25); // then changes speed...
+  await ytAd(page, true); // ...and an ad starts right away
+  await waitFor(async () => (await vstate(page)).rate === 16, { msg: '16x' });
+  await ytAd(page, false);
+  await waitFor(async () => (await vstate(page)).state === 'content', {
+    msg: 'ad end'
+  });
+  await sleep(300);
+  assert.equal((await vstate(page)).rate, 1.25);
+  await page.close();
+});
+
+test('speed: Prime Video, 1.75x viewer with a reset to 1x at ad start → 1.75x after', async () => {
+  const page = await openPage(PRIME_URL);
+  await setRateIn(page, 1.75);
+  await sleep(1500);
+  await page.evaluate(() => {
+    document.getElementById('v').playbackRate = 1;
+    document.getElementById('overlay').innerHTML =
+      '<div class="atvwebplayersdk-ad-timer">Ad 0:30</div>';
+  });
+  await waitFor(async () => (await vstate(page)).rate === 16, { msg: '16x' });
+  await page.evaluate(() => {
+    document.getElementById('overlay').innerHTML = '';
+  });
+  await waitFor(async () => (await vstate(page)).rate === 1.75, {
+    msg: '1.75x restored'
+  });
+  await page.close();
+});
+
 // ---------------- YouTube auto-skip ----------------
 
 // Builds a skip button inside the mock ad module. `markup` is HTML whose clickable
