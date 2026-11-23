@@ -8,6 +8,8 @@ import { launch, VIDEO, waitFor, sleep, enableDebug } from './helpers.mjs';
 const PRIME_URL = 'https://www.primevideo.com/detail/mock-test';
 const AMAZON_IN_URL = 'https://www.amazon.in/gp/video/detail/mock-test';
 const YT_URL = 'https://www.youtube.com/watch?v=mocktest';
+const SONYLIV_URL =
+  'https://www.sonyliv.com/shows/mock-show-1700000000/mock-episode-1090000000?watch=true';
 
 const PRIME_HTML = `<!doctype html><html><body style="margin:0;background:#000">
 <div id="dv-web-player"><div class="webPlayerSDKContainer"><div class="webPlayerUIContainer">
@@ -19,6 +21,16 @@ const YT_HTML = `<!doctype html><html><body>
 <div id="movie_player" class="html5-video-player playing-mode">
   <div class="html5-video-container"><video id="v" class="html5-main-video" src="/test.webm" autoplay loop style="width:640px;height:360px"></video></div>
   <div class="ytp-ad-module" id="admod"></div>
+</div></body></html>`;
+
+// Mirrors SonyLIV's player DOM (player.sonyliv.com sp-player-web 3.38): the IMA ad
+// container is `.ad-wrapper.ad-layer-hidden` until an ad shows; the player's own
+// "Skip Intro" button is `.skip-button`.
+const SONYLIV_HTML = `<!doctype html><html><body style="margin:0;background:#000">
+<div id="player-wrapper" class="video-player-wrapper" style="position:relative;width:640px;height:360px">
+  <video id="v" src="/test.webm" autoplay loop playsinline style="width:640px;height:360px"></video>
+  <div id="adw" class="ad-wrapper ad-layer-hidden" style="position:absolute;inset:0"></div>
+  <div class="skip-button hover-click-effect" id="skipintro" style="position:absolute;right:10px;bottom:10px">Skip Intro</div>
 </div></body></html>`;
 
 let ctx, sw, extId;
@@ -35,6 +47,8 @@ before(async () => {
       });
     if (u.hostname.endsWith('youtube.com'))
       return route.fulfill({ contentType: 'text/html', body: YT_HTML });
+    if (u.hostname.endsWith('sonyliv.com'))
+      return route.fulfill({ contentType: 'text/html', body: SONYLIV_HTML });
     if (u.hostname.endsWith('primevideo.com') || u.hostname.includes('amazon.'))
       return route.fulfill({ contentType: 'text/html', body: PRIME_HTML });
     if (u.protocol === 'chrome-extension:') return route.continue();
@@ -1001,6 +1015,130 @@ test('stats: concurrent ad-ends from several tabs are all counted', async () => 
     msg: '3 ads counted'
   });
   for (const p of pages) await p.close();
+});
+
+// ---------------- SonyLIV ----------------
+
+// SonyLIV's CSS hides `.ad-layer-hidden`; the mock page has no stylesheet, so add it.
+const sonylivPage = async () => {
+  const page = await openPage(SONYLIV_URL);
+  await page.addStyleTag({ content: '.ad-layer-hidden{display:none}' });
+  await page.evaluate(() => {
+    window.introClicks = 0;
+    document.getElementById('skipintro').onclick = () => window.introClicks++;
+  });
+  return page;
+};
+
+test('sonyliv: no ad → video untouched, hidden IMA container ignored', async () => {
+  const page = await sonylivPage();
+  await page.evaluate(() => {
+    const v = document.createElement('video');
+    document.getElementById('adw').appendChild(v); // IMA keeps its <video> here between ads
+  });
+  await sleep(800);
+  const s = await vstate(page);
+  assert.equal(s.state, 'content');
+  assert.equal(s.rate, 1);
+  assert.equal(s.muted, false);
+  await page.close();
+});
+
+test('sonyliv: IMA client-side ad → ad video 16x + muted, then content speed restored', async () => {
+  const page = await sonylivPage();
+  await page.evaluate(() => {
+    document.getElementById('v').playbackRate = 1.5;
+  });
+  await sleep(1200); // let 1.5x register as the viewer's speed
+  await page.evaluate(() => {
+    const main = document.getElementById('v');
+    main.pause(); // the player pauses content during client-side ads
+    const w = document.getElementById('adw');
+    const ad = document.createElement('video');
+    ad.id = 'ad';
+    ad.src = '/test.webm';
+    ad.autoplay = true;
+    ad.loop = true;
+    ad.style.cssText = 'width:640px;height:360px';
+    w.appendChild(ad);
+    w.insertAdjacentHTML(
+      'beforeend',
+      '<div class="ad-label-container"><div class="ad-label-text">AD</div><span class="ad-label-timer"><span class="ad-timer-mm">00:</span><span class="ad-timer-ss">15</span></span></div>'
+    );
+    w.classList.remove('ad-layer-hidden');
+  });
+  await waitFor(async () => (await vstate(page, 'ad')).rate === 16, {
+    msg: 'ad video 16x'
+  });
+  assert.equal((await vstate(page, 'ad')).muted, true);
+  assert.equal((await vstate(page)).state, 'ad');
+  assert.equal(await badgeFor(page), 'AD');
+
+  await page.evaluate(() => {
+    document.getElementById('adw').classList.add('ad-layer-hidden');
+    document.getElementById('v').play();
+  });
+  await waitFor(async () => (await vstate(page)).state === 'content', {
+    msg: 'ad ended'
+  });
+  const s = await vstate(page);
+  assert.equal(s.rate, 1.5);
+  assert.equal(s.muted, false);
+  assert.equal(await page.evaluate(() => window.introClicks), 0);
+  await page.close();
+});
+
+test('sonyliv: stitched (DAI) ad → content video 16x + muted, then 1.5x and sound back', async () => {
+  const page = await sonylivPage();
+  await page.evaluate(() => {
+    document.getElementById('v').playbackRate = 1.5;
+  });
+  await sleep(1200);
+  await page.evaluate(() =>
+    document.getElementById('player-wrapper').classList.add('dai-ad-playing')
+  );
+  await waitFor(async () => (await vstate(page)).rate === 16, { msg: '16x' });
+  assert.equal((await vstate(page)).muted, true);
+
+  await page.evaluate(() =>
+    document.getElementById('player-wrapper').classList.remove('dai-ad-playing')
+  );
+  await waitFor(async () => (await vstate(page)).state === 'content', {
+    msg: 'ad ended'
+  });
+  const s = await vstate(page);
+  assert.equal(s.rate, 1.5);
+  assert.equal(s.muted, false);
+  const stats = await waitFor(getStats, { msg: 'stats' });
+  assert.equal(stats.adsHandled, 1);
+  await page.close();
+});
+
+test('sonyliv: "Ads 1 of 2" label alone is detected', async () => {
+  const page = await sonylivPage();
+  await page.evaluate(() =>
+    document
+      .getElementById('player-wrapper')
+      .insertAdjacentHTML(
+        'beforeend',
+        '<div class="ad-info-container"><div class="ad-position"><span class="ad-position__text">Ads </span> <span class="ad-position__value">1 of 2</span></div></div>'
+      )
+  );
+  await waitFor(async () => (await vstate(page)).rate === 16, { msg: '16x' });
+  await page.close();
+});
+
+test('sonyliv: "Skip Intro" is never clicked, during or outside ads', async () => {
+  const page = await sonylivPage();
+  await sleep(600);
+  await page.evaluate(() =>
+    document.getElementById('player-wrapper').classList.add('dai-ad-playing')
+  );
+  await waitFor(async () => (await vstate(page)).rate === 16, { msg: '16x' });
+  await sleep(1500);
+  assert.equal(await page.evaluate(() => window.introClicks), 0);
+  assert.deepEqual(page.errors, []);
+  await page.close();
 });
 
 test('amazon.in is not injected (Prime Video in India plays on primevideo.com)', async () => {

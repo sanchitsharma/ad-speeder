@@ -1,5 +1,5 @@
 // Ad Speeder content script.
-// Detects when an ad is playing (Prime Video / YouTube), fast-forwards and mutes
+// Detects when an ad is playing (Prime Video / YouTube / SonyLIV), fast-forwards and mutes
 // the video while the ad runs, then restores the viewer's previous speed/volume.
 (() => {
   'use strict';
@@ -8,7 +8,9 @@
 
   const SITE = /(^|\.)youtube(-nocookie)?\.com$/.test(location.hostname)
     ? 'youtube'
-    : 'prime';
+    : /(^|\.)sonyliv\.com$/.test(location.hostname)
+      ? 'sonyliv'
+      : 'prime';
   const DEFAULTS = { enabled: true, speed: 16, mute: true, autoSkip: true };
   const MAX_RATE = 16; // Chrome throws above 16x
   const LOG = (...a) => console.debug('[AdSpeeder]', ...a);
@@ -161,14 +163,41 @@
     );
   }
 
+  // ---------- SonyLIV ----------
+  // SonyLIV's player (player.sonyliv.com sp-player-web) plays ads two ways:
+  // - client-side IMA ads: the ad <video> lives in `.ad-wrapper`, which carries
+  //   `ad-layer-hidden` except while an ad is showing;
+  // - stitched (DAI) ads: the player wrapper gets the `dai-ad-playing` class.
+  // Both show the player's own "AD 0:15" / "Ads 1 of 2" label. IMA's UI (and its
+  // Skip button) is turned off by the player, so there is no skip button to click;
+  // the player's `.skip-button` is "Skip Intro" / "Skip Recap" and must not be clicked.
+  const SONYLIV_AD_LABELS = '.ad-label-container, .ad-info-container';
+  function sonylivIsAd() {
+    if (document.querySelector('.dai-ad-playing')) return true;
+    for (const w of document.querySelectorAll(
+      '.ad-wrapper:not(.ad-layer-hidden):not(.ad-wrapper-tv)'
+    )) {
+      if (isVisible(w) && w.querySelector('video')) return true;
+    }
+    for (const el of document.querySelectorAll(SONYLIV_AD_LABELS)) {
+      if (isVisible(el)) return true;
+    }
+    return false;
+  }
+
   // ---------- generic ----------
-  const detectAd = SITE === 'youtube' ? ytIsAd : primeIsAd;
+  const detectAd =
+    SITE === 'youtube' ? ytIsAd : SITE === 'sonyliv' ? sonylivIsAd : primeIsAd;
   const videos = () => {
     const root = SITE === 'youtube' ? ytPlayer() || document : document;
     return [...root.querySelectorAll('video')];
   };
   const skipSelectors =
-    SITE === 'youtube' ? YT_SKIP_SELECTORS : PRIME_SKIP_SELECTORS;
+    SITE === 'youtube'
+      ? YT_SKIP_SELECTORS
+      : SITE === 'prime'
+        ? PRIME_SKIP_SELECTORS
+        : [];
 
   // The speed to return to after the ad, decided when the ad starts.
   function speedToRestore(current) {
@@ -317,6 +346,7 @@
   function skipCandidates() {
     const root = SITE === 'youtube' ? ytPlayer() || document : document;
     const found = new Set();
+    if (!skipSelectors.length) return found;
     for (const el of root.querySelectorAll(skipSelectors.join(',')))
       found.add(resolveButton(el));
     if (SITE === 'youtube') {

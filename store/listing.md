@@ -10,12 +10,12 @@ Upload file: `ad-speeder.zip` (built by `npm run package`).
 **Name** (from the manifest; can't be edited here): `Ad Speeder`
 
 **Summary** (from the manifest description, 132 characters max):
-> Fast-forwards and mutes video ads on Prime Video and YouTube, clicks Skip when it appears, then restores normal playback.
+> Fast-forwards and mutes video ads on YouTube, Prime Video and SonyLIV, clicks Skip when it appears, then restores normal playback.
 
 **Description:**
 
 ```
-Ad Speeder gets you through video ads faster on YouTube and Prime Video, automatically.
+Ad Speeder gets you through video ads faster on YouTube, Prime Video and SonyLIV, automatically.
 
 WHAT IT DOES
 • Plays ads at 16× speed (or 2×, 4×, 8×, your choice) and mutes them
@@ -28,6 +28,7 @@ WHAT IT DOES
 WHERE IT WORKS
 • youtube.com, including YouTube videos embedded on other websites
 • primevideo.com (Prime Video)
+• sonyliv.com (SonyLIV)
 
 PRIVACY
 Ad Speeder collects no data. No tracking, no analytics, no accounts, no network requests. It only looks at the video player on the sites above, inside your browser, to tell when an ad is playing. Settings and counters are stored with Chrome's own storage.
@@ -36,7 +37,7 @@ OPEN SOURCE
 Source code: https://github.com/sanchitsharma/ad-speeder
 Found an ad it missed? Open an issue on GitHub.
 
-Ad Speeder is an independent project and is not affiliated with, endorsed by, or sponsored by Google, YouTube or Amazon.
+Ad Speeder is an independent project and is not affiliated with, endorsed by, or sponsored by Google, YouTube, Amazon or Sony.
 ```
 
 **Category:** `Entertainment` (under Lifestyle)
@@ -64,7 +65,7 @@ Ad Speeder is an independent project and is not affiliated with, endorsed by, or
 **Single purpose description:**
 
 ```
-Ad Speeder has one purpose: getting the user through video ads faster on YouTube and Prime Video. While an ad is playing it speeds up and mutes the ad and clicks the ad's Skip button, then restores normal playback when the ad ends.
+Ad Speeder has one purpose: getting the user through video ads faster on YouTube, Prime Video and SonyLIV. While an ad is playing it speeds up and mutes the ad and clicks the ad's Skip button, then restores normal playback when the ad ends.
 ```
 
 **Permission justification for `storage`:**
@@ -76,7 +77,7 @@ Stores the user's settings (on/off, ad speed, mute ads, auto-click Skip) in chro
 **Host permission justification** (for the content-script sites):
 
 ```
-The content script runs only on youtube.com (and youtube-nocookie.com / YouTube embeds) and primevideo.com, because those are the video players whose ads it fast-forwards. On those pages it reads the video player's state to detect when an ad is playing, changes the video's playback speed and mute state, and clicks the ad's Skip button. It does not read or transmit any other page content.
+The content script runs only on youtube.com (and youtube-nocookie.com / YouTube embeds) primevideo.com and www.sonyliv.com, because those are the video players whose ads it fast-forwards. On those pages it reads the video player's state to detect when an ad is playing, changes the video's playback speed and mute state, and clicks the ad's Skip button. It does not read or transmit any other page content.
 ```
 
 **Are you using remote code?** `No, I am not using remote code.`

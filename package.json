@@ -14,7 +14,8 @@
     "lint": "eslint . && prettier --check extension tests",
     "format": "prettier --write extension tests && eslint --fix .",
     "assets": "node store/capture-popup.mjs && node store/make-assets.mjs",
-    "publish": "scripts/publish.sh"
+    "publish": "scripts/publish.sh",
+    "test:live-sonyliv": "node tests/sonyliv-live.mjs"
   },
   "author": "",
   "license": "MIT",
