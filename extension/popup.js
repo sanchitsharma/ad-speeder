@@ -2,8 +2,10 @@ const DEFAULT_SETTINGS = {
   enabled: true,
   speed: 16,
   mute: true,
-  autoSkip: true
+  autoSkip: true,
+  humanize: { youtube: true, prime: false, sonyliv: false }
 };
+const SITES = ['youtube', 'prime', 'sonyliv'];
 const DEFAULT_STATS = { adsHandled: 0, secondsSaved: 0, skipsClicked: 0 };
 const $ = (id) => document.getElementById(id);
 
@@ -27,6 +29,8 @@ async function init() {
   $('mute').checked = settings.mute;
   $('autoSkip').checked = settings.autoSkip;
   $('speed').value = String(settings.speed);
+  for (const site of SITES)
+    $(`hz-${site}`).checked = !!settings.humanize?.[site];
 
   const { stats } = await chrome.storage.local.get({ stats: DEFAULT_STATS });
   renderStats(stats);
@@ -35,6 +39,13 @@ async function init() {
 for (const id of ['enabled', 'mute', 'autoSkip']) {
   $(id).addEventListener('change', (e) =>
     chrome.storage.sync.set({ [id]: e.target.checked })
+  );
+}
+for (const site of SITES) {
+  $(`hz-${site}`).addEventListener('change', () =>
+    chrome.storage.sync.set({
+      humanize: Object.fromEntries(SITES.map((x) => [x, $(`hz-${x}`).checked]))
+    })
   );
 }
 $('speed').addEventListener('change', (e) =>

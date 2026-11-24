@@ -10,7 +10,9 @@ While an ad is playing, Ad Speeder:
 - clicks **Skip** / **Skip ad** the moment the button appears (YouTube, and Amazon's own promo ads on Prime Video),
 - then restores your previous speed and volume when the ad ends.
 
-Unskippable ads simply fly by at 16×. The toolbar icon shows a red **AD** badge while an ad is being fast-forwarded. The popup lets you turn it on/off, choose the ad speed (2/4/8/16×), toggle muting and auto-skip, and see how much time you've saved.
+**Act human** (per site, on for YouTube by default): instead of jumping straight to 16× and muting, each ad gets its own random plan. The speed climbs from where it was in quick, irregular steps (about 120–300 ms apart) to a random 14–16× peak, then drifts between 10× and 16× every few seconds. The sound is either muted or turned down to a random 1–10% volume. The ranges scale with the chosen ad speed. It makes the extension's behaviour less uniform; it doesn't make it undetectable.
+
+Unskippable ads simply fly by at 16×. The toolbar icon shows a red **AD** badge while an ad is being fast-forwarded. The popup lets you turn it on/off, choose the ad speed (2/4/8/16×), toggle muting, auto-skip and Act human per site, and see how much time you've saved.
 
 It runs only on `youtube.com` (including YouTube videos embedded on other sites), `primevideo.com` and `www.sonyliv.com`. It collects no data and makes no network requests. See the [privacy policy](PRIVACY.md).
 

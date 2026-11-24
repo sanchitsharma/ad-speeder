@@ -40,3 +40,21 @@ button {
   padding: 0;
   cursor: pointer;
 }
+fieldset.human {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  margin: 10px 0 0;
+  padding: 2px 8px 6px;
+}
+fieldset.human legend {
+  padding: 0 4px;
+  color: #5f6368;
+}
+fieldset.human label.row {
+  margin: 4px 0;
+}
+.hint {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #5f6368;
+}

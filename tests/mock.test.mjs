@@ -33,6 +33,8 @@ const SONYLIV_HTML = `<!doctype html><html><body style="margin:0;background:#000
   <div class="skip-button hover-click-effect" id="skipintro" style="position:absolute;right:10px;bottom:10px">Skip Intro</div>
 </div></body></html>`;
 
+const HUMANIZE_OFF = { youtube: false, prime: false, sonyliv: false };
+
 let ctx, sw, extId;
 
 before(async () => {
@@ -67,6 +69,9 @@ beforeEach(async () => {
       )
   );
   await enableDebug(sw);
+  // Most tests check exact speeds/mute, so they run with humanizing off;
+  // the "humanize:" tests turn it back on.
+  await setSettings({ humanize: HUMANIZE_OFF });
 });
 
 async function openPage(url) {
@@ -929,6 +934,188 @@ test('youtube skip: skip-looking buttons are never clicked when no ad is playing
 
 // ---------------- popup ----------------
 
+// ---------------- humanized ads ----------------
+
+// Records every playbackRate/volume/muted value the main video goes through, with a timestamp.
+const recordRates = (page) =>
+  page.evaluate(() => {
+    const v = document.getElementById('v');
+    window.rateLog = [];
+    window.recStart = performance.now();
+    const rec = () =>
+      window.rateLog.push({
+        t: performance.now() - window.recStart,
+        rate: v.playbackRate,
+        volume: v.volume,
+        muted: v.muted
+      });
+    v.addEventListener('ratechange', rec);
+    v.addEventListener('volumechange', rec);
+  });
+const rateLog = (page) => page.evaluate(() => window.rateLog);
+const setForceSound = (mode) =>
+  sw.evaluate((m) => chrome.storage.local.set({ forceSound: m }), mode);
+test('humanize: on for YouTube by default, off for Prime Video and SonyLIV', async () => {
+  await sw.evaluate(() => new Promise((r) => chrome.storage.sync.clear(r)));
+  await setForceSound('mute');
+  const page = await openPage(YT_URL);
+  await recordRates(page);
+  await ytAd(page, true);
+  await waitFor(async () => (await vstate(page)).state === 'ad', { msg: 'ad' });
+  await sleep(150);
+  const r = (await vstate(page)).rate;
+  assert.ok(r < 14, `YouTube ramps up instead of jumping to 16x (rate ${r})`);
+  await ytAd(page, false);
+  await page.close();
+
+  const prime = await openPage(PRIME_URL);
+  await prime.evaluate(() => {
+    document.getElementById('overlay').innerHTML =
+      '<div class="atvwebplayersdk-ad-timer">Ad 0:30</div>';
+  });
+  await waitFor(async () => (await vstate(prime)).rate === 16, {
+    msg: 'Prime still goes straight to 16x'
+  });
+  assert.equal((await vstate(prime)).muted, true);
+  await prime.close();
+});
+
+test('humanize: speed climbs in human-paced steps to a 14-16x peak, then stays within 10-16x', async () => {
+  await setSettings({ humanize: { ...HUMANIZE_OFF, youtube: true } });
+  await setForceSound('mute');
+  const page = await openPage(YT_URL);
+  await recordRates(page);
+  await ytAd(page, true);
+  await sleep(9000);
+  const log = (await rateLog(page)).filter(
+    (e, i, a) => i === 0 || e.rate !== a[i - 1].rate
+  );
+  const rates = log.map((e) => e.rate);
+  console.log('    rates:', rates.join(' → '));
+  const peakIdx = rates.findIndex((r) => r >= 14);
+  assert.ok(peakIdx >= 3, 'at least 3 intermediate steps before 14x');
+  const ramp = log.slice(0, peakIdx + 1);
+  for (let i = 1; i < ramp.length; i++) {
+    assert.ok(ramp[i].rate > ramp[i - 1].rate, 'ramp only goes up');
+    assert.ok(
+      ramp[i].rate - ramp[i - 1].rate <= 3.5 + 1e-9,
+      'steps of at most 3.5x'
+    );
+  }
+  for (let i = 2; i < ramp.length; i++) {
+    const gap = ramp[i].t - ramp[i - 1].t;
+    assert.ok(
+      gap >= 100,
+      `steps are human-paced, not instant (gap ${gap.toFixed(0)}ms)`
+    );
+  }
+  const peak = ramp.at(-1);
+  assert.ok(peak.rate >= 14 && peak.rate <= 16, `peak ${peak.rate}`);
+  assert.ok(peak.t < 3000, `reaches the peak fast (${peak.t.toFixed(0)}ms)`);
+  const after = log.slice(peakIdx + 1).map((e) => e.rate);
+  assert.ok(after.length >= 1, 'speed drifts after the peak');
+  for (const r of after)
+    assert.ok(r >= 10 && r <= 16, `drift within 10-16x (${r})`);
+  assert.equal((await vstate(page)).muted, true);
+
+  await ytAd(page, false);
+  await waitFor(
+    async () => {
+      const s = await vstate(page);
+      return s.state === 'content' && s.rate === 1 && !s.muted;
+    },
+    { msg: 'restored' }
+  );
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test('humanize: volume mode turns the sound down to 1-10% instead of muting, then restores it', async () => {
+  await setSettings({ humanize: { ...HUMANIZE_OFF, youtube: true } });
+  await setForceSound('volume');
+  const page = await openPage(YT_URL);
+  await page.evaluate(() => {
+    document.getElementById('v').volume = 0.8;
+  });
+  await ytAd(page, true);
+  const vol = await waitFor(
+    () =>
+      page.evaluate(() => {
+        const v = document.getElementById('v');
+        return v.volume < 0.8 ? v.volume : 0;
+      }),
+    { msg: 'volume turned down' }
+  );
+  assert.ok(vol >= 0.01 && vol <= 0.1, `volume ${vol}`);
+  assert.equal((await vstate(page)).muted, false, 'not muted in volume mode');
+  await ytAd(page, false);
+  await waitFor(
+    () => page.evaluate(() => document.getElementById('v').volume === 0.8),
+    { msg: 'volume restored to 80%' }
+  );
+  await page.close();
+});
+
+test('humanize: sound choice and peak vary between ads', async () => {
+  await setSettings({ humanize: { ...HUMANIZE_OFF, youtube: true } });
+  const page = await openPage(YT_URL);
+  await page.evaluate(() => {
+    document.getElementById('v').volume = 0.8;
+  });
+  const seen = { mute: 0, volume: 0 };
+  const peaks = new Set();
+  for (let i = 0; i < 8; i++) {
+    await recordRates(page);
+    await ytAd(page, true);
+    await sleep(2600);
+    const s = await page.evaluate(() => {
+      const v = document.getElementById('v');
+      return { muted: v.muted, volume: v.volume };
+    });
+    seen[s.muted ? 'mute' : 'volume']++;
+    const log = await rateLog(page);
+    peaks.add(Math.max(...log.map((e) => e.rate)));
+    await ytAd(page, false);
+    await waitFor(
+      async () => {
+        const st = await vstate(page);
+        return st.state === 'content' && st.rate === 1 && !st.muted;
+      },
+      { msg: `restored after ad ${i + 1}` }
+    );
+    assert.equal(
+      await page.evaluate(() => document.getElementById('v').volume),
+      0.8
+    );
+  }
+  console.log('    sound per ad:', seen, '| peaks:', [...peaks].join(', '));
+  assert.ok(peaks.size >= 2, 'different peaks');
+  // 8 fair coin flips all landing the same way: 1 in 128.
+  assert.ok(
+    seen.mute > 0 && seen.volume > 0,
+    'both muting and turning down happen'
+  );
+  await page.close();
+});
+
+test('humanize: a site that resets the speed mid-ramp gets the planned speed back', async () => {
+  await setSettings({ humanize: { ...HUMANIZE_OFF, youtube: true } });
+  await setForceSound('mute');
+  const page = await openPage(YT_URL);
+  await ytAd(page, true);
+  await waitFor(async () => (await vstate(page)).rate >= 14, {
+    msg: 'at peak'
+  });
+  await page.evaluate(() => {
+    document.getElementById('v').playbackRate = 1;
+  });
+  await waitFor(async () => (await vstate(page)).rate >= 10, {
+    msg: 'planned speed re-applied'
+  });
+  await ytAd(page, false);
+  await page.close();
+});
+
 test('popup: shows settings + stats, and changes are saved', async () => {
   await sw.evaluate(
     () =>
@@ -949,6 +1136,8 @@ test('popup: shows settings + stats, and changes are saved', async () => {
   assert.equal(await page.textContent('#saved'), '7m 5s');
   assert.equal(await page.inputValue('#speed'), '16');
   assert.equal(await page.isChecked('#enabled'), true);
+  assert.equal(await page.isChecked('#hz-youtube'), false); // beforeEach turned it off
+  await page.check('#hz-sonyliv');
   await page.selectOption('#speed', '4');
   await page.uncheck('#mute');
   const s = await sw.evaluate(
@@ -956,6 +1145,7 @@ test('popup: shows settings + stats, and changes are saved', async () => {
   );
   assert.equal(s.speed, 4);
   assert.equal(s.mute, false);
+  assert.deepEqual(s.humanize, { youtube: false, prime: false, sonyliv: true });
   await page.click('#reset');
   await waitFor(
     () =>

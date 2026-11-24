@@ -11,7 +11,14 @@
     : /(^|\.)sonyliv\.com$/.test(location.hostname)
       ? 'sonyliv'
       : 'prime';
-  const DEFAULTS = { enabled: true, speed: 16, mute: true, autoSkip: true };
+  const DEFAULTS = {
+    enabled: true,
+    speed: 16,
+    mute: true,
+    autoSkip: true,
+    // Per site: vary speed and sound per ad, and ramp the speed up in human-paced steps.
+    humanize: { youtube: true, prime: false, sonyliv: false }
+  };
   const MAX_RATE = 16; // Chrome throws above 16x
   const LOG = (...a) => console.debug('[AdSpeeder]', ...a);
 
@@ -20,6 +27,8 @@
   // the state as <html data-ad-speeder="ad|content">. Off by default so pages
   // can't use it to detect the extension.
   let debug = false;
+  // Test-only (debug mode): force the humanized sound choice, 'mute' | 'volume'.
+  let forceSound = null;
   const mark = (state) => {
     if (debug) document.documentElement.dataset.adSpeeder = state;
   };
@@ -39,6 +48,73 @@
   let viewerRate = null;
   let candidate = { rate: null, since: 0 };
   let guard = null; // { until, rate, videos: Set<HTMLVideoElement> }
+
+  // ---------- humanized ads ----------
+  // With humanize on for this site, each ad gets its own plan instead of a fixed 16x + mute:
+  // the speed climbs from where it is in quick, irregular steps (like someone tapping a
+  // speed-up key) to a random peak near the max, then drifts to a new random speed every
+  // few seconds; the sound is either muted or turned down to a random 1-10% volume.
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const round2 = (x) => Math.round(x * 100) / 100;
+  const maxSpeed = () =>
+    Math.max(1, Math.min(Number(settings.speed) || 16, MAX_RATE));
+  const humanizeOn = () => !!settings.humanize?.[SITE];
+  let plan = null; // { rate, peak, lo, hi, sound, volume, timer, sum, since, started }
+
+  function startPlan(startRate) {
+    const hi = maxSpeed();
+    const peak = round2(rand(Math.max(1, hi - 2), hi)); // 14-16x at the default 16x
+    const now = performance.now();
+    plan = {
+      rate: Math.max(1, Math.min(startRate || 1, peak)),
+      peak,
+      lo: Math.max(1, (hi * 10) / 16), // 10-16x at the default 16x
+      hi,
+      sound: forceSound || (Math.random() < 0.5 ? 'mute' : 'volume'),
+      volume: round2(rand(0.01, 0.1)),
+      timer: 0,
+      sum: 0,
+      since: now,
+      started: now
+    };
+    plan.timer = setTimeout(rampStep, rand(80, 200));
+    LOG('humanized ad: peak', peak, 'sound', plan.sound, plan.volume);
+  }
+
+  function setPlanRate(rate) {
+    const now = performance.now();
+    plan.sum += plan.rate * (now - plan.since);
+    plan.since = now;
+    plan.rate = rate;
+    if (inAd) videos().forEach(speedUp);
+  }
+
+  function rampStep() {
+    if (!plan) return;
+    const next = Math.min(plan.peak, round2(plan.rate + rand(1.5, 3.5)));
+    setPlanRate(next);
+    plan.timer =
+      next >= plan.peak
+        ? setTimeout(wander, rand(2000, 5000))
+        : setTimeout(rampStep, rand(120, 300));
+  }
+
+  function wander() {
+    if (!plan) return;
+    setPlanRate(round2(rand(plan.lo, plan.hi)));
+    plan.timer = setTimeout(wander, rand(2000, 5000));
+  }
+
+  // Ends the plan and returns its time-weighted average speed.
+  function endPlan() {
+    if (!plan) return null;
+    clearTimeout(plan.timer);
+    const now = performance.now();
+    const total = plan.sum + plan.rate * (now - plan.since);
+    const avg = now > plan.started ? total / (now - plan.started) : plan.rate;
+    plan = null;
+    return avg;
+  }
 
   // ---------- helpers ----------
   const isVisible = (el) => {
@@ -276,14 +352,13 @@
         rate: speedToRestore(v.playbackRate),
         muted: v.muted,
         setRate: null,
-        didMute: false
+        didMute: false,
+        volume: v.volume,
+        setVolume: null
       };
       saved.set(v, s);
     }
-    const target = Math.max(
-      1,
-      Math.min(Number(settings.speed) || 16, MAX_RATE)
-    );
+    const target = plan ? plan.rate : maxSpeed();
     if (v.playbackRate !== target) {
       try {
         v.playbackRate = target;
@@ -292,13 +367,30 @@
       }
     }
     s.setRate = target;
-    if (settings.mute && !v.muted) {
+    const turnDown = settings.mute && plan?.sound === 'volume';
+    if (settings.mute && !turnDown && !v.muted) {
       v.muted = true;
       s.didMute = true;
+    }
+    // Volume mode: turn it down to the plan's 1-10%, unless it's already lower.
+    if (turnDown && s.setVolume === null && v.volume > plan.volume) {
+      s.volume = v.volume;
+      s.setVolume = plan.volume;
+    }
+    if (turnDown && s.setVolume !== null && v.volume !== s.setVolume) {
+      try {
+        v.volume = s.setVolume;
+      } catch {
+        /* ignore */
+      }
     }
     if (!settings.mute && s.didMute && v.muted) {
       v.muted = false;
       s.didMute = false;
+    }
+    if (!settings.mute && s.setVolume !== null) {
+      if (Math.abs(v.volume - s.setVolume) < 0.005) v.volume = s.volume;
+      s.setVolume = null;
     }
   }
 
@@ -318,6 +410,9 @@
         setRate(v, s.rate);
       }
       if (s.didMute && v.muted) v.muted = s.muted;
+      // Put the volume back unless someone changed it during the ad.
+      if (s.setVolume !== null && Math.abs(v.volume - s.setVolume) < 0.005)
+        v.volume = s.volume;
       restored.add(v);
       guardRate = s.rate;
     }
@@ -439,18 +534,20 @@
         adStartedAt = performance.now();
         skipsThisAd = 0;
         LOG('ad started');
+        if (humanizeOn()) startPlan(mainVideo()?.playbackRate);
         report(true);
       }
       videos().forEach(speedUp);
       if (settings.autoSkip) trySkip();
     } else if (inAd) {
       inAd = false;
+      const avgRate = endPlan();
       restoreAll();
       const secs = (performance.now() - adStartedAt) / 1000;
       LOG('ad ended after', secs.toFixed(1), 's');
       report(false, {
         adSeconds: secs,
-        speed: Math.min(settings.speed, MAX_RATE),
+        speed: avgRate ?? maxSpeed(),
         skips: skipsThisAd
       });
     } else {
@@ -473,14 +570,17 @@
 
   Promise.all([
     chrome.storage.sync.get(DEFAULTS),
-    chrome.storage.local.get({ debug: false })
+    chrome.storage.local.get({ debug: false, forceSound: null })
   ]).then(([synced, local]) => {
     settings = { ...DEFAULTS, ...synced };
     debug = !!local.debug;
+    forceSound = debug ? local.forceSound : null;
     tick();
   });
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.debug) debug = !!changes.debug.newValue;
+    if (area === 'local' && changes.forceSound)
+      forceSound = debug ? changes.forceSound.newValue : null;
     if (area !== 'sync') return;
     for (const [k, { newValue }] of Object.entries(changes))
       settings[k] = newValue ?? DEFAULTS[k];

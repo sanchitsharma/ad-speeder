@@ -6,7 +6,8 @@ const DEFAULT_SETTINGS = {
   enabled: true,
   speed: 16,
   mute: true,
-  autoSkip: true
+  autoSkip: true,
+  humanize: { youtube: true, prime: false, sonyliv: false }
 };
 const DEFAULT_STATS = { adsHandled: 0, secondsSaved: 0, skipsClicked: 0 };
 

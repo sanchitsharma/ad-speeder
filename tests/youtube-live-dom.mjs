@@ -29,6 +29,7 @@ const st = () =>
         .join(','),
       rate: v.playbackRate,
       muted: v.muted,
+      volume: v.volume,
       ext: document.documentElement.dataset.adSpeeder
     };
   });
@@ -45,14 +46,19 @@ await page.evaluate(() => {
 await page.evaluate(() =>
   document.querySelector('#movie_player').classList.add('ad-showing')
 );
-await waitFor(async () => (await st()).rate === 16, { msg: '16x' }).catch(
+// Humanize is on for YouTube by default: the speed ramps up to a random 14-16x peak,
+// and the ad is either muted or turned down to 1-10% volume.
+await waitFor(async () => (await st()).rate >= 14, { msg: '>=14x' }).catch(
   () => {}
 );
 let s = await st();
 console.log('during ad:', s);
 ok(
-  s.rate === 16 && s.muted && s.ext === 'ad',
-  'real YouTube player in ad state → 16x + muted'
+  s.rate >= 14 &&
+    s.rate <= 16 &&
+    (s.muted || s.volume <= 0.1) &&
+    s.ext === 'ad',
+  'real YouTube player in ad state → ramped to 14-16x, muted or turned down'
 );
 await page.evaluate(() => {
   const b = document.createElement('button');
@@ -203,7 +209,7 @@ await page.evaluate(() => {
   document.querySelector('#movie_player video').playbackRate = 1;
   document.querySelector('#movie_player').classList.add('ad-showing');
 });
-await waitFor(async () => (await st()).rate === 16, { msg: '16x' }).catch(
+await waitFor(async () => (await st()).rate >= 14, { msg: '>=14x' }).catch(
   () => {}
 );
 await page.evaluate(() =>
