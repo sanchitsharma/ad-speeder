@@ -33,7 +33,23 @@ const SONYLIV_HTML = `<!doctype html><html><body style="margin:0;background:#000
   <div class="skip-button hover-click-effect" id="skipintro" style="position:absolute;right:10px;bottom:10px">Skip Intro</div>
 </div></body></html>`;
 
-const HUMANIZE_OFF = { youtube: false, prime: false, sonyliv: false };
+// Hotstar: client-side ads play in their own <video> inside #ad-video-container on
+// top of the paused content; the ad overlay's button is the "Go Ads free" upsell.
+const HOTSTAR_URL =
+  'https://www.hotstar.com/in/shows/mock-show/1260000000/mock-episode/1271000000/watch';
+const JIOHOTSTAR_URL =
+  'https://www.jiohotstar.com/in/movies/mock-movie/1260000001/watch';
+const HOTSTAR_HTML = `<!doctype html><html><body style="margin:0;background:#000">
+<div id="player-root" style="position:relative;width:640px;height:360px">
+  <video id="v" src="/test.webm" autoplay loop playsinline style="width:640px;height:360px"></video>
+</div></body></html>`;
+
+const HUMANIZE_OFF = {
+  youtube: false,
+  prime: false,
+  sonyliv: false,
+  hotstar: false
+};
 
 let ctx, sw, extId;
 
@@ -51,6 +67,8 @@ before(async () => {
       return route.fulfill({ contentType: 'text/html', body: YT_HTML });
     if (u.hostname.endsWith('sonyliv.com'))
       return route.fulfill({ contentType: 'text/html', body: SONYLIV_HTML });
+    if (u.hostname.endsWith('hotstar.com'))
+      return route.fulfill({ contentType: 'text/html', body: HOTSTAR_HTML });
     if (u.hostname.endsWith('primevideo.com') || u.hostname.includes('amazon.'))
       return route.fulfill({ contentType: 'text/html', body: PRIME_HTML });
     if (u.protocol === 'chrome-extension:') return route.continue();
@@ -1145,7 +1163,12 @@ test('popup: shows settings + stats, and changes are saved', async () => {
   );
   assert.equal(s.speed, 4);
   assert.equal(s.mute, false);
-  assert.deepEqual(s.humanize, { youtube: false, prime: false, sonyliv: true });
+  assert.deepEqual(s.humanize, {
+    youtube: false,
+    prime: false,
+    sonyliv: true,
+    hotstar: false
+  });
   await page.click('#reset');
   await waitFor(
     () =>
@@ -1328,6 +1351,127 @@ test('sonyliv: "Skip Intro" is never clicked, during or outside ads', async () =
   await sleep(1500);
   assert.equal(await page.evaluate(() => window.introClicks), 0);
   assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+// ---------------- Hotstar ----------------
+
+const hotstarPage = async (url = HOTSTAR_URL) => {
+  const page = await openPage(url);
+  await page.evaluate(() => {
+    window.upsellClicks = 0;
+  });
+  return page;
+};
+// Start a client-side ad the way Hotstar does: pause content, show the ad container.
+const hotstarAdStart = (page) =>
+  page.evaluate(() => {
+    document.getElementById('v').pause();
+    const c = document.createElement('div');
+    c.id = 'ad-video-container';
+    c.style.cssText = 'position:absolute;inset:0';
+    c.innerHTML =
+      '<video id="ad" src="/test.webm" autoplay loop playsinline style="width:640px;height:360px"></video>' +
+      '<div class="ad-overlay"><span>Ad 1 of 2</span><button id="upsell">Go Ads free</button></div>';
+    c.querySelector('#upsell').onclick = () => window.upsellClicks++;
+    document.getElementById('player-root').appendChild(c);
+  });
+const hotstarAdEnd = (page) =>
+  page.evaluate(() => {
+    document.getElementById('ad-video-container').remove();
+    document.getElementById('v').play();
+  });
+
+test('hotstar: no ad → video untouched, hidden ad container ignored', async () => {
+  const page = await hotstarPage();
+  await page.evaluate(() => {
+    const c = document.createElement('div');
+    c.id = 'ad-video-container';
+    c.style.display = 'none';
+    c.innerHTML = '<video src="/test.webm"></video>';
+    document.getElementById('player-root').appendChild(c);
+  });
+  await sleep(800);
+  const s = await vstate(page);
+  assert.equal(s.state, 'content');
+  assert.equal(s.rate, 1);
+  assert.equal(s.muted, false);
+  await page.close();
+});
+
+test('hotstar: client-side ad → ad video 16x + muted, then content speed restored', async () => {
+  const page = await hotstarPage();
+  await page.evaluate(() => {
+    document.getElementById('v').playbackRate = 1.5;
+  });
+  await sleep(1200); // let 1.5x register as the viewer's speed
+  await hotstarAdStart(page);
+  await waitFor(async () => (await vstate(page, 'ad')).rate === 16, {
+    msg: 'ad video 16x'
+  });
+  assert.equal((await vstate(page, 'ad')).muted, true);
+  assert.equal((await vstate(page)).state, 'ad');
+  assert.equal(await badgeFor(page), 'AD');
+  await sleep(1500);
+  assert.equal(
+    await page.evaluate(() => window.upsellClicks),
+    0,
+    '"Go Ads free" never clicked'
+  );
+
+  await hotstarAdEnd(page);
+  await waitFor(async () => (await vstate(page)).state === 'content', {
+    msg: 'ad ended'
+  });
+  const s = await vstate(page);
+  assert.equal(s.rate, 1.5);
+  assert.equal(s.muted, false);
+  const stats = await waitFor(getStats, { msg: 'stats' });
+  assert.equal(stats.adsHandled, 1);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test('hotstar: ad container left with an ended ad video is not an ad', async () => {
+  const page = await hotstarPage();
+  await hotstarAdStart(page);
+  await waitFor(async () => (await vstate(page)).state === 'ad', { msg: 'ad' });
+  const info = await page.evaluate(async () => {
+    const ad = document.getElementById('ad');
+    ad.loop = false;
+    if (!Number.isFinite(ad.duration)) ad.currentTime = 1e9; // forces duration to resolve
+    await new Promise((r) => setTimeout(r, 300));
+    ad.currentTime = ad.duration;
+    await new Promise((r) =>
+      ad.ended ? r() : ad.addEventListener('ended', r, { once: true })
+    );
+    return { d: ad.duration, ended: ad.ended };
+  });
+  assert.ok(info.ended, JSON.stringify(info));
+  await waitFor(async () => (await vstate(page)).state === 'content', {
+    msg: 'ad ended'
+  });
+  await page.close();
+});
+
+test('hotstar: jiohotstar.com is covered too, and humanize can be turned on for it', async () => {
+  await sw.evaluate(() =>
+    chrome.storage.sync.set({
+      humanize: { youtube: false, prime: false, sonyliv: false, hotstar: true }
+    })
+  );
+  const page = await hotstarPage(JIOHOTSTAR_URL);
+  await hotstarAdStart(page);
+  await waitFor(async () => (await vstate(page)).state === 'ad', { msg: 'ad' });
+  await waitFor(async () => (await vstate(page, 'ad')).rate >= 14, {
+    msg: 'ramped to 14x+',
+    timeout: 8000
+  });
+  await hotstarAdEnd(page);
+  await waitFor(async () => (await vstate(page)).state === 'content', {
+    msg: 'ad ended'
+  });
+  assert.equal((await vstate(page)).rate, 1);
   await page.close();
 });
 

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Ad Speeder",
-  "version": "1.3.0",
-  "description": "Fast-forwards and mutes video ads on YouTube, Prime Video and SonyLIV, clicks Skip when it appears, then restores normal playback.",
+  "version": "1.4.0",
+  "description": "Fast-forwards and mutes video ads on YouTube, Prime Video, SonyLIV and Hotstar, clicks Skip if shown, then restores playback.",
   "minimum_chrome_version": "121",
   "permissions": ["storage"],
   "background": {
@@ -42,6 +42,11 @@
     },
     {
       "matches": ["https://www.sonyliv.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.hotstar.com/*", "https://www.jiohotstar.com/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
     }

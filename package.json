@@ -15,7 +15,8 @@
     "format": "prettier --write extension tests && eslint --fix .",
     "assets": "node store/capture-popup.mjs && node store/make-assets.mjs",
     "publish": "scripts/publish.sh",
-    "test:live-sonyliv": "node tests/sonyliv-live.mjs"
+    "test:live-sonyliv": "node tests/sonyliv-live.mjs",
+    "test:live-hotstar": "node tests/hotstar-live.mjs"
   },
   "author": "",
   "license": "MIT",

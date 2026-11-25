@@ -1,5 +1,5 @@
 // Ad Speeder content script.
-// Detects when an ad is playing (Prime Video / YouTube / SonyLIV), fast-forwards and mutes
+// Detects when an ad is playing (Prime Video / YouTube / SonyLIV / Hotstar), fast-forwards and mutes
 // the video while the ad runs, then restores the viewer's previous speed/volume.
 (() => {
   'use strict';
@@ -10,14 +10,16 @@
     ? 'youtube'
     : /(^|\.)sonyliv\.com$/.test(location.hostname)
       ? 'sonyliv'
-      : 'prime';
+      : /(^|\.)(jio)?hotstar\.com$/.test(location.hostname)
+        ? 'hotstar'
+        : 'prime';
   const DEFAULTS = {
     enabled: true,
     speed: 16,
     mute: true,
     autoSkip: true,
     // Per site: vary speed and sound per ad, and ramp the speed up in human-paced steps.
-    humanize: { youtube: true, prime: false, sonyliv: false }
+    humanize: { youtube: true, prime: false, sonyliv: false, hotstar: false }
   };
   const MAX_RATE = 16; // Chrome throws above 16x
   const LOG = (...a) => console.debug('[AdSpeeder]', ...a);
@@ -261,9 +263,31 @@
     return false;
   }
 
+  // ---------- Hotstar ----------
+  // Hotstar (hotstar.com / jiohotstar.com) plays client-side ads in their own
+  // <video> inside `#ad-video-container`, on top of the paused content video. The
+  // ad overlay's only button is the "Go Ads free" upsell, which must not be clicked,
+  // so there is no skip button here either. Live streams stitch ads into the stream
+  // with no marker in the page; those can't be sped up and are left alone.
+  const HOTSTAR_AD_CONTAINER = '#ad-video-container';
+  function hotstarIsAd() {
+    for (const c of document.querySelectorAll(HOTSTAR_AD_CONTAINER)) {
+      if (!isVisible(c)) continue;
+      for (const v of c.querySelectorAll('video')) {
+        if (isVisible(v) && (v.currentSrc || v.src) && !v.ended) return true;
+      }
+    }
+    return false;
+  }
+
   // ---------- generic ----------
-  const detectAd =
-    SITE === 'youtube' ? ytIsAd : SITE === 'sonyliv' ? sonylivIsAd : primeIsAd;
+  const AD_DETECTORS = {
+    youtube: ytIsAd,
+    prime: primeIsAd,
+    sonyliv: sonylivIsAd,
+    hotstar: hotstarIsAd
+  };
+  const detectAd = AD_DETECTORS[SITE];
   const videos = () => {
     const root = SITE === 'youtube' ? ytPlayer() || document : document;
     return [...root.querySelectorAll('video')];
