@@ -78,7 +78,7 @@ Stores the user's settings (on/off, ad speed, mute ads, auto-click Skip) in chro
 **Host permission justification** (for the content-script sites):
 
 ```
-The content script runs only on youtube.com (and youtube-nocookie.com / YouTube embeds) primevideo.com, www.sonyliv.com and www.hotstar.com / www.jiohotstar.com, because those are the video players whose ads it fast-forwards. On those pages it reads the video player's state to detect when an ad is playing, changes the video's playback speed and mute state, and clicks the ad's Skip button. It does not read or transmit any other page content.
+The content script runs only on youtube.com (and youtube-nocookie.com / YouTube embeds), primevideo.com, www.sonyliv.com and www.hotstar.com / www.jiohotstar.com, because those are the video players whose ads it fast-forwards. On those pages it reads the video player's state to detect when an ad is playing, changes the video's playback speed and mute state, and clicks the ad's Skip button. It does not read or transmit any other page content.
 ```
 
 **Are you using remote code?** `No, I am not using remote code.`
